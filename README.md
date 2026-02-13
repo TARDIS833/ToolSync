@@ -48,6 +48,7 @@ npm run package
 - `ToolSync: 즉시 동기화 실행`
 - `ToolSync: 자동 동기화 시작`
 - `ToolSync: 자동 동기화 중지`
+- `ToolSync: 에러/진단 리포트 생성`
 
 ## 로컬 동작 흐름
 1. `ToolSync: 초기화` 실행
@@ -81,3 +82,22 @@ npm run package
 - 변경 감지 트리거:
   - 확장 목록 변경: `toolsync.autoSyncOnExtensionChange`
   - ToolSync/테마 설정 변경: `toolsync.autoSyncOnConfigChange`
+
+## 실패 재시도/제외 목록
+- 재시도 횟수: `toolsync.applyRetryCount`
+- 재시도 지연(초): `toolsync.applyRetryDelaySec` (재시도마다 배수 증가)
+- 제외 목록:
+  - `toolsync.excludeExtensions`
+  - `toolsync.excludeMcp`
+  - `toolsync.excludeSkills`
+
+## 에러 로그/리포트
+- 로그 경로: `<syncRoot>/logs`
+  - 실행 로그: `runtime.log`
+  - 에러 로그: `errors.ndjson`
+  - 로테이션 아카이브: `<syncRoot>/logs/archive`
+- 진단 리포트 경로: `<syncRoot>/reports/diagnostic-*.json`
+- 로그 관리 설정:
+  - `toolsync.logMaxSizeKb`
+  - `toolsync.logKeepArchives`
+  - `toolsync.reportTailLines`

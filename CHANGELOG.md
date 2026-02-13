@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.4
+- Added apply retry policy with linear backoff (`applyRetryCount`, `applyRetryDelaySec`)
+- Added exclusion lists for extension/MCP/Skill sync targets
+- Added error/runtime log management and log rotation
+- Added diagnostic report command (`ToolSync: 에러/진단 리포트 생성`)
+- Added log/report settings for error reporting workflow
+
 ## 0.0.3
 - Added auto sync controller with interval loop and queued cycle handling
 - Added change-triggered sync on extension/config/theme updates

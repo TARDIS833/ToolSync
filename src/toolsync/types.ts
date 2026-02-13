@@ -34,6 +34,14 @@ export type ToolSyncConfig = {
   tools: ToolId[];
   allowEnvKeys: string[];
   propagateDelete: boolean;
+  excludeExtensions: string[];
+  excludeMcp: string[];
+  excludeSkills: string[];
+  applyRetryCount: number;
+  applyRetryDelaySec: number;
+  logMaxSizeKb: number;
+  logKeepArchives: number;
+  reportTailLines: number;
 };
 
 export type Registry = {

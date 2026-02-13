@@ -2,7 +2,7 @@
   "name": "toolsync",
   "displayName": "ToolSync",
   "description": "Local-first developer environment sync helper",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "tardis833",
   "license": "MIT",
   "private": false,
@@ -17,7 +17,11 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:toolsync.hello"
+    "onCommand:toolsync.hello",
+    "onCommand:toolsync.init",
+    "onCommand:toolsync.snapshot",
+    "onCommand:toolsync.plan",
+    "onCommand:toolsync.apply"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -25,6 +29,22 @@
       {
         "command": "toolsync.hello",
         "title": "ToolSync: 상태 확인"
+      },
+      {
+        "command": "toolsync.init",
+        "title": "ToolSync: 초기화"
+      },
+      {
+        "command": "toolsync.snapshot",
+        "title": "ToolSync: VS Code 스냅샷 저장"
+      },
+      {
+        "command": "toolsync.plan",
+        "title": "ToolSync: 동기화 계획 생성"
+      },
+      {
+        "command": "toolsync.apply",
+        "title": "ToolSync: 동기화 계획 적용 (VS Code)"
       }
     ],
     "configuration": {
@@ -34,6 +54,60 @@
           "type": "string",
           "default": "~/ToolSync",
           "description": "ToolSync 로컬 동기화 루트 경로"
+        },
+        "toolsync.tools": {
+          "type": "array",
+          "default": [
+            "vscode",
+            "cursor",
+            "codex",
+            "antigravity",
+            "claude",
+            "lmstudio"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "동기화 대상 툴 목록"
+        },
+        "toolsync.allowEnvKeys": {
+          "type": "array",
+          "default": [
+            "LANG",
+            "LC_ALL",
+            "TERM",
+            "TZ"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "동기화 허용 환경변수 키 목록"
+        },
+        "toolsync.mcp": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "VS Code 측 MCP 목록(메타데이터)"
+        },
+        "toolsync.skills": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "VS Code 측 Skill 목록(메타데이터)"
+        },
+        "toolsync.terminalTheme": {
+          "type": "string",
+          "default": "Default",
+          "description": "터미널 테마 메타데이터"
+        },
+        "toolsync.propagateDelete": {
+          "type": "boolean",
+          "default": false,
+          "description": "삭제 전파 여부(현재 미구현, 예약 옵션)"
         }
       }
     }

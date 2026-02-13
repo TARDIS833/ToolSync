@@ -41,3 +41,32 @@ npm run package
 
 ## 명령어
 - `ToolSync: 상태 확인`
+- `ToolSync: 초기화`
+- `ToolSync: VS Code 스냅샷 저장`
+- `ToolSync: 동기화 계획 생성`
+- `ToolSync: 동기화 계획 적용 (VS Code)`
+
+## 로컬 동작 흐름
+1. `ToolSync: 초기화` 실행
+2. `ToolSync: VS Code 스냅샷 저장` 실행
+3. `ToolSync: 동기화 계획 생성` 실행
+4. `ToolSync: 동기화 계획 적용 (VS Code)` 실행
+
+기본 동기화 폴더(`toolsync.syncRoot`)에 다음 파일이 생성됩니다.
+
+```text
+<syncRoot>/
+  config.json
+  state.json
+  snapshots/
+    vscode.json
+    cursor.json (다른 커넥터가 기록 시)
+  registry.json
+  plans/
+    vscode.json
+```
+
+참고:
+- 현재 VS Code 적용은 `extension/editor_theme/mcp/skill/env` 항목을 처리합니다.
+- `extension`은 실제 설치를 시도합니다.
+- `mcp/skill/terminal_theme`는 VS Code 설정 메타데이터로 반영됩니다.

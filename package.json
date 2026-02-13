@@ -1,0 +1,58 @@
+{
+  "name": "toolsync",
+  "displayName": "ToolSync",
+  "description": "Local-first developer environment sync helper",
+  "version": "0.0.1",
+  "publisher": "tardis833",
+  "license": "MIT",
+  "private": false,
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:TARDIS833/ToolSync.git"
+  },
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:toolsync.hello"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "toolsync.hello",
+        "title": "ToolSync: 상태 확인"
+      }
+    ],
+    "configuration": {
+      "title": "ToolSync",
+      "properties": {
+        "toolsync.syncRoot": {
+          "type": "string",
+          "default": "~/ToolSync",
+          "description": "ToolSync 로컬 동기화 루트 경로"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile",
+    "package": "npm run compile && mkdir -p dist && vsce package --out dist/toolsync-${npm_package_version}.vsix",
+    "lint": "eslint src --ext ts",
+    "test": "echo \"No tests yet\""
+  },
+  "devDependencies": {
+    "@types/node": "20.x",
+    "@types/vscode": "^1.95.0",
+    "@typescript-eslint/eslint-plugin": "^8.25.0",
+    "@typescript-eslint/parser": "^8.25.0",
+    "@vscode/vsce": "^3.2.2",
+    "eslint": "^9.20.1",
+    "typescript": "^5.8.2"
+  }
+}

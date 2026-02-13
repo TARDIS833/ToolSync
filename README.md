@@ -45,6 +45,9 @@ npm run package
 - `ToolSync: VS Code 스냅샷 저장`
 - `ToolSync: 동기화 계획 생성`
 - `ToolSync: 동기화 계획 적용 (VS Code)`
+- `ToolSync: 즉시 동기화 실행`
+- `ToolSync: 자동 동기화 시작`
+- `ToolSync: 자동 동기화 중지`
 
 ## 로컬 동작 흐름
 1. `ToolSync: 초기화` 실행
@@ -70,3 +73,11 @@ npm run package
 - 현재 VS Code 적용은 `extension/editor_theme/mcp/skill/env` 항목을 처리합니다.
 - `extension`은 실제 설치를 시도합니다.
 - `mcp/skill/terminal_theme`는 VS Code 설정 메타데이터로 반영됩니다.
+
+## 자동 동기화
+- 기본값으로 확장 활성화 시 자동 동기화가 시작됩니다.
+- 주기 설정: `toolsync.autoSyncIntervalSec` (기본 30초)
+- 자동 적용 여부: `toolsync.autoApplyVscodePlan` (기본 false)
+- 변경 감지 트리거:
+  - 확장 목록 변경: `toolsync.autoSyncOnExtensionChange`
+  - ToolSync/테마 설정 변경: `toolsync.autoSyncOnConfigChange`

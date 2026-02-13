@@ -2,7 +2,7 @@
   "name": "toolsync",
   "displayName": "ToolSync",
   "description": "Local-first developer environment sync helper",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "publisher": "tardis833",
   "license": "MIT",
   "private": false,
@@ -17,11 +17,15 @@
     "Other"
   ],
   "activationEvents": [
+    "onStartupFinished",
     "onCommand:toolsync.hello",
     "onCommand:toolsync.init",
     "onCommand:toolsync.snapshot",
     "onCommand:toolsync.plan",
-    "onCommand:toolsync.apply"
+    "onCommand:toolsync.apply",
+    "onCommand:toolsync.syncNow",
+    "onCommand:toolsync.autoStart",
+    "onCommand:toolsync.autoStop"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -45,6 +49,18 @@
       {
         "command": "toolsync.apply",
         "title": "ToolSync: 동기화 계획 적용 (VS Code)"
+      },
+      {
+        "command": "toolsync.syncNow",
+        "title": "ToolSync: 즉시 동기화 실행"
+      },
+      {
+        "command": "toolsync.autoStart",
+        "title": "ToolSync: 자동 동기화 시작"
+      },
+      {
+        "command": "toolsync.autoStop",
+        "title": "ToolSync: 자동 동기화 중지"
       }
     ],
     "configuration": {
@@ -108,6 +124,32 @@
           "type": "boolean",
           "default": false,
           "description": "삭제 전파 여부(현재 미구현, 예약 옵션)"
+        },
+        "toolsync.autoSyncEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "확장 활성화 시 자동 동기화 루프를 시작합니다."
+        },
+        "toolsync.autoSyncIntervalSec": {
+          "type": "number",
+          "default": 30,
+          "minimum": 5,
+          "description": "자동 동기화 주기(초)"
+        },
+        "toolsync.autoApplyVscodePlan": {
+          "type": "boolean",
+          "default": false,
+          "description": "자동 동기화 시 VS Code 계획을 즉시 적용합니다."
+        },
+        "toolsync.autoSyncOnExtensionChange": {
+          "type": "boolean",
+          "default": true,
+          "description": "확장 설치/제거 감지 시 자동 동기화를 수행합니다."
+        },
+        "toolsync.autoSyncOnConfigChange": {
+          "type": "boolean",
+          "default": true,
+          "description": "ToolSync/테마 설정 변경 감지 시 자동 동기화를 수행합니다."
         }
       }
     }

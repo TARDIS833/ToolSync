@@ -12,7 +12,13 @@ type ToolSyncPaths = {
   statePath: string;
   snapshotsDir: string;
   plansDir: string;
-  registryPath: string;
+};
+
+type CycleResult = {
+  revision: number;
+  actionCount: number;
+  applyOk: number;
+  applyFail: number;
 };
 
 function resolveHomePath(input: string): string {
@@ -31,8 +37,7 @@ function getPaths(): ToolSyncPaths {
     configPath: path.join(syncRoot, "config.json"),
     statePath: path.join(syncRoot, "state.json"),
     snapshotsDir: path.join(syncRoot, "snapshots"),
-    plansDir: path.join(syncRoot, "plans"),
-    registryPath: path.join(syncRoot, "registry.json")
+    plansDir: path.join(syncRoot, "plans")
   };
 }
 
@@ -41,7 +46,6 @@ function getDefaultConfig(): ToolSyncConfig {
   const tools = cfg.get<string[]>("tools", [...SUPPORTED_TOOLS]);
   const allowEnvKeys = cfg.get<string[]>("allowEnvKeys", ["LANG", "LC_ALL", "TERM", "TZ"]);
   const propagateDelete = cfg.get<boolean>("propagateDelete", false);
-
   return { tools, allowEnvKeys, propagateDelete };
 }
 
@@ -79,10 +83,7 @@ async function snapshotVscode(paths: ToolSyncPaths, output: vscode.OutputChannel
     .filter((id) => id !== "tardis833.toolsync")
     .sort((a, b) => a.localeCompare(b));
 
-  const editorTheme = vscode.workspace
-    .getConfiguration("workbench")
-    .get<string>("colorTheme", "Default Dark+");
-
+  const editorTheme = vscode.workspace.getConfiguration("workbench").get<string>("colorTheme", "Default Dark+");
   const terminalTheme = settings.get<string>("terminalTheme", "Default");
   const mcp = settings.get<string[]>("mcp", []);
   const skills = settings.get<string[]>("skills", []);
@@ -213,14 +214,151 @@ async function applyVscodePlan(paths: ToolSyncPaths, output: vscode.OutputChanne
   return { ok, fail };
 }
 
+class AutoSyncController {
+  private timer: NodeJS.Timeout | null = null;
+  private running = false;
+  private pendingReason: string | null = null;
+  private mutedUntilMs = 0;
+
+  constructor(private readonly output: vscode.OutputChannel) {}
+
+  private getSettings(): {
+    enabled: boolean;
+    intervalSec: number;
+    autoApply: boolean;
+    onExtensionsChange: boolean;
+    onConfigChange: boolean;
+  } {
+    const cfg = vscode.workspace.getConfiguration("toolsync");
+    return {
+      enabled: cfg.get<boolean>("autoSyncEnabled", true),
+      intervalSec: Math.max(5, cfg.get<number>("autoSyncIntervalSec", 30)),
+      autoApply: cfg.get<boolean>("autoApplyVscodePlan", false),
+      onExtensionsChange: cfg.get<boolean>("autoSyncOnExtensionChange", true),
+      onConfigChange: cfg.get<boolean>("autoSyncOnConfigChange", true)
+    };
+  }
+
+  public isStarted(): boolean {
+    return this.timer !== null;
+  }
+
+  public async runCycle(reason: string, showToast: boolean): Promise<CycleResult> {
+    if (this.running) {
+      this.pendingReason = this.pendingReason ? `${this.pendingReason},${reason}` : reason;
+      return { revision: 0, actionCount: 0, applyOk: 0, applyFail: 0 };
+    }
+
+    this.running = true;
+    const settings = this.getSettings();
+    const paths = getPaths();
+
+    try {
+      ensureBaseLayout(paths);
+      await snapshotVscode(paths, this.output);
+      const planned = buildAndPersistPlans(paths, this.output);
+
+      let applyOk = 0;
+      let applyFail = 0;
+
+      if (settings.autoApply) {
+        this.mutedUntilMs = Date.now() + 1500;
+        const applied = await applyVscodePlan(paths, this.output);
+        applyOk = applied.ok;
+        applyFail = applied.fail;
+        await snapshotVscode(paths, this.output);
+      }
+
+      const finalPlan = buildAndPersistPlans(paths, this.output);
+      this.output.appendLine(`[cycle] reason=${reason} autoApply=${settings.autoApply} actions=${finalPlan.actionCount}`);
+
+      if (showToast) {
+        await vscode.window.showInformationMessage(
+          `ToolSync 동기화 완료 (revision=${finalPlan.revision}, remain=${finalPlan.actionCount}, ok=${applyOk}, fail=${applyFail})`
+        );
+      }
+
+      return {
+        revision: finalPlan.revision,
+        actionCount: finalPlan.actionCount,
+        applyOk,
+        applyFail
+      };
+    } finally {
+      this.running = false;
+      if (this.pendingReason) {
+        const next = this.pendingReason;
+        this.pendingReason = null;
+        void this.runCycle(`queued:${next}`, false);
+      }
+    }
+  }
+
+  public start(context: vscode.ExtensionContext): void {
+    if (this.timer) {
+      return;
+    }
+
+    const settings = this.getSettings();
+    this.timer = setInterval(() => {
+      void this.runCycle("interval", false);
+    }, settings.intervalSec * 1000);
+
+    const extChanged = vscode.extensions.onDidChange(() => {
+      if (!this.getSettings().onExtensionsChange) {
+        return;
+      }
+      void this.runCycle("extensions.onDidChange", false);
+    });
+
+    const cfgChanged = vscode.workspace.onDidChangeConfiguration((e) => {
+      if (Date.now() < this.mutedUntilMs) {
+        return;
+      }
+
+      const settingsNow = this.getSettings();
+      const toolsyncChanged = e.affectsConfiguration("toolsync");
+      const themeChanged = e.affectsConfiguration("workbench.colorTheme");
+
+      if (toolsyncChanged && settingsNow.onConfigChange) {
+        void this.runCycle("config.onDidChange", false);
+      } else if (themeChanged && settingsNow.onConfigChange) {
+        void this.runCycle("theme.onDidChange", false);
+      }
+
+      if (toolsyncChanged && this.timer) {
+        clearInterval(this.timer);
+        this.timer = setInterval(() => {
+          void this.runCycle("interval", false);
+        }, this.getSettings().intervalSec * 1000);
+      }
+    });
+
+    context.subscriptions.push(extChanged, cfgChanged, new vscode.Disposable(() => this.stop()));
+    this.output.appendLine(`[auto] started interval=${settings.intervalSec}s`);
+    void this.runCycle("auto.start", false);
+  }
+
+  public stop(): void {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+      this.output.appendLine("[auto] stopped");
+    }
+  }
+}
+
 export function activate(context: vscode.ExtensionContext): void {
   const output = vscode.window.createOutputChannel("ToolSync");
+  const auto = new AutoSyncController(output);
 
   const statusCmd = vscode.commands.registerCommand("toolsync.hello", async () => {
     const paths = getPaths();
+    const mode = auto.isStarted() ? "AUTO=ON" : "AUTO=OFF";
     const message = [
       "ToolSync는 로컬 전용으로 동작합니다.",
       `syncRoot: ${paths.syncRoot}`,
+      `mode: ${mode}`,
       "Marketplace 자동 업데이트 없이 VSIX 설치 방식으로 운영됩니다."
     ].join("\n");
     await vscode.window.showInformationMessage(message, { modal: true });
@@ -243,10 +381,7 @@ export function activate(context: vscode.ExtensionContext): void {
   });
 
   const planCmd = vscode.commands.registerCommand("toolsync.plan", async () => {
-    const paths = getPaths();
-    ensureBaseLayout(paths);
-    await snapshotVscode(paths, output);
-    const result = buildAndPersistPlans(paths, output);
+    const result = await auto.runCycle("command.plan", false);
     await vscode.window.showInformationMessage(`동기화 계획 생성 완료 (revision=${result.revision}, actions=${result.actionCount})`);
   });
 
@@ -258,14 +393,42 @@ export function activate(context: vscode.ExtensionContext): void {
 
     const result = await applyVscodePlan(paths, output);
     await snapshotVscode(paths, output);
-    const planResult = buildAndPersistPlans(paths, output);
+    const finalPlan = buildAndPersistPlans(paths, output);
 
     await vscode.window.showInformationMessage(
-      `동기화 적용 완료 (ok=${result.ok}, fail=${result.fail}, remainActions=${planResult.actionCount})`
+      `동기화 적용 완료 (ok=${result.ok}, fail=${result.fail}, remainActions=${finalPlan.actionCount})`
     );
   });
 
-  context.subscriptions.push(output, statusCmd, initCmd, snapshotCmd, planCmd, applyCmd);
+  const syncNowCmd = vscode.commands.registerCommand("toolsync.syncNow", async () => {
+    await auto.runCycle("command.syncNow", true);
+  });
+
+  const autoStartCmd = vscode.commands.registerCommand("toolsync.autoStart", async () => {
+    auto.start(context);
+    await vscode.window.showInformationMessage("ToolSync 자동 동기화 시작");
+  });
+
+  const autoStopCmd = vscode.commands.registerCommand("toolsync.autoStop", async () => {
+    auto.stop();
+    await vscode.window.showInformationMessage("ToolSync 자동 동기화 중지");
+  });
+
+  context.subscriptions.push(
+    output,
+    statusCmd,
+    initCmd,
+    snapshotCmd,
+    planCmd,
+    applyCmd,
+    syncNowCmd,
+    autoStartCmd,
+    autoStopCmd
+  );
+
+  if (vscode.workspace.getConfiguration("toolsync").get<boolean>("autoSyncEnabled", true)) {
+    auto.start(context);
+  }
 }
 
 export function deactivate(): void {

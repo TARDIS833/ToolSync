@@ -19,6 +19,7 @@ type CycleResult = {
   actionCount: number;
   applyOk: number;
   applyFail: number;
+  changed: boolean;
 };
 
 function resolveHomePath(input: string): string {
@@ -96,9 +97,9 @@ async function snapshotVscode(paths: ToolSyncPaths, output: vscode.OutputChannel
     }
   }
 
-  const snap: Snapshot = {
+  const prev = readJson<Snapshot | null>(path.join(paths.snapshotsDir, "vscode.json"), null);
+  const nextPayload = {
     tool: "vscode",
-    updatedAt: new Date().toISOString(),
     extension: extensionIds,
     mcp,
     skill: skills,
@@ -107,9 +108,41 @@ async function snapshotVscode(paths: ToolSyncPaths, output: vscode.OutputChannel
     env
   };
 
-  writeJson(path.join(paths.snapshotsDir, "vscode.json"), snap);
-  output.appendLine(`[snapshot] vscode extensions=${snap.extension.length} mcp=${snap.mcp.length} skills=${snap.skill.length}`);
-  return snap;
+  const prevPayload = prev
+    ? {
+        tool: prev.tool,
+        extension: prev.extension,
+        mcp: prev.mcp,
+        skill: prev.skill,
+        terminal_theme: prev.terminal_theme,
+        editor_theme: prev.editor_theme,
+        env: prev.env
+      }
+    : null;
+
+  const changed = JSON.stringify(prevPayload) !== JSON.stringify(nextPayload);
+
+  const snap: Snapshot = {
+    tool: "vscode",
+    updatedAt: new Date().toISOString(),
+    extension: nextPayload.extension,
+    mcp: nextPayload.mcp,
+    skill: nextPayload.skill,
+    terminal_theme: nextPayload.terminal_theme,
+    editor_theme: nextPayload.editor_theme,
+    env: nextPayload.env
+  };
+
+  if (changed || !prev) {
+    writeJson(path.join(paths.snapshotsDir, "vscode.json"), snap);
+    output.appendLine(
+      `[snapshot] changed extensions=${snap.extension.length} mcp=${snap.mcp.length} skills=${snap.skill.length}`
+    );
+    return snap;
+  }
+
+  output.appendLine("[snapshot] unchanged");
+  return prev;
 }
 
 function buildAndPersistPlans(paths: ToolSyncPaths, output: vscode.OutputChannel): { revision: number; actionCount: number } {
@@ -219,6 +252,7 @@ class AutoSyncController {
   private running = false;
   private pendingReason: string | null = null;
   private mutedUntilMs = 0;
+  private lastExternalSnapshotMarker = "";
 
   constructor(private readonly output: vscode.OutputChannel) {}
 
@@ -243,10 +277,29 @@ class AutoSyncController {
     return this.timer !== null;
   }
 
+  private getExternalSnapshotMarker(paths: ToolSyncPaths): string {
+    try {
+      const files = fs
+        .readdirSync(paths.snapshotsDir)
+        .filter((name) => name.endsWith(".json") && name !== "vscode.json")
+        .sort((a, b) => a.localeCompare(b));
+
+      return files
+        .map((name) => {
+          const fullPath = path.join(paths.snapshotsDir, name);
+          const stat = fs.statSync(fullPath);
+          return `${name}:${stat.mtimeMs}:${stat.size}`;
+        })
+        .join("|");
+    } catch {
+      return "";
+    }
+  }
+
   public async runCycle(reason: string, showToast: boolean): Promise<CycleResult> {
     if (this.running) {
       this.pendingReason = this.pendingReason ? `${this.pendingReason},${reason}` : reason;
-      return { revision: 0, actionCount: 0, applyOk: 0, applyFail: 0 };
+      return { revision: 0, actionCount: 0, applyOk: 0, applyFail: 0, changed: false };
     }
 
     this.running = true;
@@ -255,11 +308,23 @@ class AutoSyncController {
 
     try {
       ensureBaseLayout(paths);
-      await snapshotVscode(paths, this.output);
+      const before = readJson<Snapshot | null>(path.join(paths.snapshotsDir, "vscode.json"), null);
+      const after = await snapshotVscode(paths, this.output);
+      const changed = JSON.stringify(before) !== JSON.stringify(after);
+      const externalMarker = this.getExternalSnapshotMarker(paths);
+      const externalChanged = externalMarker !== this.lastExternalSnapshotMarker;
+
+      if (!changed && !externalChanged && reason === "interval") {
+        this.output.appendLine("[cycle] skip heavy plan build on unchanged interval snapshot");
+        this.lastExternalSnapshotMarker = externalMarker;
+        return { revision: 0, actionCount: 0, applyOk: 0, applyFail: 0, changed: false };
+      }
+
       const planned = buildAndPersistPlans(paths, this.output);
 
       let applyOk = 0;
       let applyFail = 0;
+      let finalPlan = planned;
 
       if (settings.autoApply) {
         this.mutedUntilMs = Date.now() + 1500;
@@ -267,10 +332,11 @@ class AutoSyncController {
         applyOk = applied.ok;
         applyFail = applied.fail;
         await snapshotVscode(paths, this.output);
+        finalPlan = buildAndPersistPlans(paths, this.output);
       }
 
-      const finalPlan = buildAndPersistPlans(paths, this.output);
       this.output.appendLine(`[cycle] reason=${reason} autoApply=${settings.autoApply} actions=${finalPlan.actionCount}`);
+      this.lastExternalSnapshotMarker = externalMarker;
 
       if (showToast) {
         await vscode.window.showInformationMessage(
@@ -282,7 +348,8 @@ class AutoSyncController {
         revision: finalPlan.revision,
         actionCount: finalPlan.actionCount,
         applyOk,
-        applyFail
+        applyFail,
+        changed
       };
     } finally {
       this.running = false;
@@ -382,7 +449,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const planCmd = vscode.commands.registerCommand("toolsync.plan", async () => {
     const result = await auto.runCycle("command.plan", false);
-    await vscode.window.showInformationMessage(`동기화 계획 생성 완료 (revision=${result.revision}, actions=${result.actionCount})`);
+    await vscode.window.showInformationMessage(
+      `동기화 계획 생성 완료 (revision=${result.revision}, actions=${result.actionCount}, changed=${result.changed})`
+    );
   });
 
   const applyCmd = vscode.commands.registerCommand("toolsync.apply", async () => {

@@ -4,3 +4,5 @@ src/**
 .eslintrc.json
 tsconfig.json
 **/*.map
+archive/**
+DEVELOPMENT_PLAN.md
